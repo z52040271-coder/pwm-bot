@@ -1,3 +1,16 @@
+from aiohttp import web
+
+async def handle(request):
+    return web.Response(text="I am alive!")
+
+app = web.Application()
+app.router.add_get("/", handle)
+
+async def start_web_server():
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 10000)
+    await site.start()
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher, F, types
@@ -133,6 +146,9 @@ async def process_orgs(callback: types.CallbackQuery):
 
 # --- ЗАПУСК ---
 async def main():
+    # Запускаем веб-сервер для Render
+    await start_web_server()
+    # Запускаем бота
     logging.basicConfig(level=logging.INFO)
     await dp.start_polling(bot)
 
