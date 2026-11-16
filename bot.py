@@ -153,40 +153,6 @@ async def process_orgs(callback: types.CallbackQuery):
     )
     await callback.message.edit_text(text, reply_markup=get_ustav_keyboard(), parse_mode="Markdown")
     await callback.answer()
-    import asyncio
-import logging
-import sqlite3
-from datetime import datetime, timedelta
-from aiohttp import web
-from aiogram import Bot, Dispatcher, F, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-# --- Web Server для Render (чтобы бот не засыпал) ---
-async def handle(request):
-    return web.Response(text="I am alive!")
-
-app = web.Application()
-app.router.add_get("/", handle)
-
-async def start_web_server():
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", 10000)
-    await site.start()
-
-# --- Настройка бота ---
-TOKEN = "9004870309:AAE74QxpUPCNYhmP1X2d4W..."  # Ваш токен
-bot = Bot(token=TOKEN)
-dp = Dispatcher()
-
-# --- База данных SQLite ---
-db_connection = sqlite3.connect("bot_points.db")
-db_cursor = db_connection.cursor()
-
-db_cursor.execute("CREATE TABLE IF NOT EXISTS admin_points_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, points_change INTEGER, timestamp TEXT)")
-db_cursor.execute("CREATE TABLE IF NOT EXISTS message_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, timestamp TEXT)")
-db_cursor.execute("CREATE TABLE IF NOT EXISTS active_punishments (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER, admin_username TEXT, target_id INTEGER, active INTEGER DEFAULT 1, timestamp TEXT)")
-db_connection.commit()
 
 # --- Клавиатура для топа администраторов ---
 def get_top_keyboard():
@@ -196,7 +162,6 @@ def get_top_keyboard():
         [InlineKeyboardButton(text="3) За неделю", callback_data="top_week")],
         [InlineKeyboardButton(text="4) За 3 дня", callback_data="top_3days")]
     ])
-
 # --- Функция формирования текста рейтинга админов ---
 def get_leaderboard_text(period_name, cutoff_str=None):
     if cutoff_str:
@@ -434,14 +399,15 @@ async def track_all_activity(message: types.Message):
     except Exception:
         pass
 
-# --- ЗАПУСК ---
+# --- Запуск бота и веб-сервера ---
 async def main():
-    # Запускаем веб-сервер для Render
     await start_web_server()
-    # Запускаем бота
-    logging.basicConfig(level=logging.INFO)
-    await dp.start_polling(bot)
+    # Сбрасываем старые зависшие обновления, чтобы избежать ошибок TelegramNotFound при старте
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot, drop_pending_updates=True)
 
 if __name__ == "__main__":
     asyncio.run(main())
-
+            
+                        
+                    
