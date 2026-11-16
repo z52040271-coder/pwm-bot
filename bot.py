@@ -49,7 +49,8 @@ def get_ustav_keyboard():
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     await message.answer("Привет! Я бот группы PWM. Напишите /rules (или /правила) или /ustav (/устав), чтобы узнать подробности!")
-@dp.message(F.text.in_({"rules", "правила"}))
+
+@dp.message(F.text.lower().in_({"/rules", "/правила", "rules", "правила"}))
 async def cmd_rules(message: types.Message):
     text = """**ПРАВИЛА ЧАТУ:**
 
@@ -71,8 +72,7 @@ async def cmd_rules(message: types.Message):
 
     await message.answer(text, parse_mode="Markdown")
 
-
-@dp.message(F.text.in_({"ustav", "устав"}))
+@dp.message(F.text.lower().in_({"/ustav", "/устав", "ustav", "устав"}))
 async def cmd_ustav(message: types.Message):
     text = """📜 **Устав PWM**
 
@@ -80,7 +80,7 @@ async def cmd_ustav(message: types.Message):
     await message.answer(text, reply_markup=get_ustav_keyboard(), parse_mode="Markdown")
 
 
-# --- Обработка нажатий на кнопки устава ---
+# --- ОБРАБОТКА НАЖАТИЙ НА КНОПКИ УСТАВА ---
 
 @dp.callback_query(F.data == "ustav_rules_more")
 async def process_rules_more(callback: types.CallbackQuery):
@@ -193,9 +193,12 @@ async def process_orgs(callback: types.CallbackQuery):
         pass
     await callback.answer()
 
+
+# --- Создание таблиц БД ---
 db_cursor.execute("CREATE TABLE IF NOT EXISTS admin_points_log (user_id INTEGER, username TEXT, points_change INTEGER, timestamp TEXT)")
 db_cursor.execute("CREATE TABLE IF NOT EXISTS message_log (user_id INTEGER, username TEXT, timestamp TEXT)")
 db_connection.commit()
+
 
 # --- Клавиатура для топа администраторов ---
 def get_top_keyboard():
