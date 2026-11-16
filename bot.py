@@ -8,7 +8,7 @@ app.router.add_get("/", handle)
 
 async def start_web_server():
     runner = web.AppRunner(app)
-    await runner.setup()
+    await runner.setup() 
     site = web.TCPSite(runner, "0.0.0.0", 10000)
     await site.start()
 import sqlite3
@@ -303,80 +303,40 @@ async def track_all_activity(message: types.Message):
         return
 
     now_str = datetime.now().isoformat()
-
-    # 1. Отслеживание команд наказаний от админов (/mute, /ban, /warn)
-    if message.text and message.text.lower().startswith(("/mute", "/ban", "/warn", "/мутить", "/бан", "/варн")):
-        if message.reply_to_message:
+   
+    # --- Отслеживание команд наказаний ---
+    if message.text:
+        text_lower = message.text.lower()
+        punishment_commands = [
+            "/mute", "/ban", "/warn", "/kick",
+            "мут", "бан", "варн", "кик"
+        ]
+        
+        if any(text_lower.startswith(cmd) for cmd in punishment_commands):
             user_id = message.from_user.id
             username = message.from_user.full_name
-            target_user = message.reply_to_message.from_user
+            
             try:
-                member = await message.bot.get_chat_member(chat_id=message.chat.id, user_id=user_id)
+                member = await message.bot.get_chat_member(message.chat.id, user_id)
                 if member.status in ["administrator", "creator"]:
                     db_cursor.execute(
                         "INSERT INTO admin_points_log (user_id, username, points_change, timestamp) VALUES (?, ?, 3, ?)",
                         (user_id, username, now_str)
                     )
-                    db_cursor.execute(
-                        "INSERT INTO active_punishments (admin_id, admin_username, target_id, active, timestamp) VALUES (?, ?, ?, 1, ?)",
-                        (user_id, username, target_user.id, now_str)
-                    )
                     db_connection.commit()
             except Exception:
                 pass
-        return
 
-    # 2. Отслеживание отмены наказаний админами (/unmute, /unban, /размут)
-    if message.text and message.text.lower().startswith(("/unmute", "/unban", "/размут", "/разбан")):
-        user_id = message.from_user.id
-        username = message.from_user.full_name
-        try:
-            member = await message.bot.get_chat_member(chat_id=message.chat.id, user_id=user_id)
-            if member.status in ["administrator", "creator"]:
-                target_user_id = message.reply_to_message.from_user.id if message.reply_to_message else None
-                if target_user_id:
-                    db_cursor.execute("SELECT id, admin_id FROM active_punishments WHERE target_id = ? AND active = 1 ORDER BY id DESC LIMIT 1", (target_user_id,))
-                else:
-                    db_cursor.execute("SELECT id, admin_id FROM active_punishments WHERE admin_id = ? AND active = 1 ORDER BY id DESC LIMIT 1", (user_id,))
-                
-                punish_record = db_cursor.fetchone()
-                if punish_record:
-                    punish_id, responsible_admin_id = punish_record
-                    db_cursor.execute("UPDATE active_punishments SET active = 0 WHERE id = ?", (punish_id,))
-                    
-                    db_cursor.execute("SELECT username FROM admin_points_log WHERE user_id = ? LIMIT 1", (responsible_admin_id,))
-                    row = db_cursor.fetchone()
-                    admin_uname = row[0] if row else "Админ"
+    # 4. Логирование обычных сообщений для общей статистики
+    user_id = message.from_user.id
+    username = message.from_user.full_name
+    
+    db_cursor.execute(
+        "INSERT INTO message_log (user_id, username, timestamp) VALUES (?, ?, ?)",
+        (user_id, username, now_str)
+    )
+    db_connection.commit()
 
-                    db_cursor.execute(
-                        "INSERT INTO admin_points_log (user_id, username, points_change, timestamp) VALUES (?, ?, -3, ?)",
-                        (responsible_admin_id, admin_uname, now_str)
-                    )
-                    db_connection.commit()
-        except Exception:
-            pass
-        return
-
-    # 3. Автоматическое снятие очков через сообщения от @GroupHelpBot
-    if message.from_user.username and message.from_user.username.lower() == "grouphelpbot":
-        text = (message.text or message.caption or "").lower()
-        if any(kw in text for kw in ["unmute", "unban", "размут", "разбан", "снято", "восстановлен"]):
-            db_cursor.execute("SELECT id, admin_id FROM active_punishments WHERE active = 1 ORDER BY id ASC LIMIT 1")
-            punish_record = db_cursor.fetchone()
-            if punish_record:
-                punish_id, responsible_admin_id = punish_record
-                db_cursor.execute("UPDATE active_punishments SET active = 0 WHERE id = ?", (punish_id,))
-                
-                db_cursor.execute("SELECT username FROM admin_points_log WHERE user_id = ? LIMIT 1", (responsible_admin_id,))
-                row = db_cursor.fetchone()
-                admin_uname = row[0] if row else "Админ"
-
-                db_cursor.execute(
-                    "INSERT INTO admin_points_log (user_id, username, points_change, timestamp) VALUES (?, ?, -3, ?)",
-                    (responsible_admin_id, admin_uname, now_str)
-                )
-                db_connection.commit()
-        return
 
     # 4. Логирование обычных сообщений для общей статистики
     user_id = message.from_user.id
