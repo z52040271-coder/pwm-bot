@@ -50,7 +50,7 @@ def get_ustav_keyboard():
 async def cmd_start(message: types.Message):
     await message.answer("Привет! Я бот группы PWM. Напишите /rules (или /правила) или /ustav (/устав), чтобы узнать подробности!")
 
-@dp.message(F.text.lower().in_({"/rules", "/правила", "rules", "правила"}))
+    @dp.message(Command("rules", "правила"))
 async def cmd_rules(message: types.Message):
     text = """**ПРАВИЛА ЧАТУ:**
 
@@ -72,7 +72,7 @@ async def cmd_rules(message: types.Message):
 
     await message.answer(text, parse_mode="Markdown")
 
-@dp.message(F.text.lower().in_({"/ustav", "/устав", "ustav", "устав"}))
+    @dp.message(Command("ustav", "устав"))
 async def cmd_ustav(message: types.Message):
     text = """📜 **Устав PWM**
 
