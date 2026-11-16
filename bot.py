@@ -153,11 +153,85 @@ async def process_orgs(callback: types.CallbackQuery):
     )
     await callback.message.edit_text(text, reply_markup=get_ustav_keyboard(), parse_mode="Markdown")
     await callback.answer()
+    import asyncio
+import logging
+import sqlite3
+from datetime import datetime, timedelta
+from aiohttp import web
+from aiogram import Bot, Dispatcher, F, types
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+# --- Web Server для Render (чтобы бот не засыпал) ---
+async def handle(request):
+    return web.Response(text="I am alive!")
+
+app = web.Application()
+app.router.add_get("/", handle)
+
+async def start_web_server():
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 10000)
+    await site.start()
+
+# --- Настройка бота ---
+TOKEN = "9004870309:AAE74QxpUPCNYhmP1X2d4W..."  # Ваш токен
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
+
+# --- База данных SQLite ---
+db_connection = sqlite3.connect("bot_points.db")
+db_cursor = db_connection.cursor()
+
+db_cursor.execute("CREATE TABLE IF NOT EXISTS admin_points_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, points_change INTEGER, timestamp TEXT)")
+db_cursor.execute("CREATE TABLE IF NOT EXISTS message_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, timestamp TEXT)")
+db_cursor.execute("CREATE TABLE IF NOT EXISTS active_punishments (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER, admin_username TEXT, target_id INTEGER, active INTEGER DEFAULT 1, timestamp TEXT)")
+db_connection.commit()
+
+# --- Клавиатура для топа администраторов ---
+def get_top_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="1) За всё время", callback_data="top_all")],
+        [InlineKeyboardButton(text="2) За 1 месяц", callback_data="top_month")],
+        [InlineKeyboardButton(text="3) За неделю", callback_data="top_week")],
+        [InlineKeyboardButton(text="4) За 3 дня", callback_data="top_3days")]
+    ])
+
+# --- Функция формирования текста рейтинга админов ---
+def get_leaderboard_text(period_name, cutoff_str=None):
+    if cutoff_str:
+        db_cursor.execute("""
+            SELECT username, SUM(points_change) as total 
+            FROM admin_points_log 
+            WHERE timestamp >= ? 
+            GROUP BY user_id 
+            ORDER BY total DESC 
+            LIMIT 5
+        """, (cutoff_str,))
+    else:
+        db_cursor.execute("""
+            SELECT username, SUM(points_change) as total 
+            FROM admin_points_log 
+            GROUP BY user_id 
+            ORDER BY total DESC 
+            LIMIT 5
+        """)
+    top_admins = db_cursor.fetchall()
+
+    text = f"🏆 **Рейтинг администраторов ({period_name}):**\n\n"
+    if top_admins:
+        for idx, (uname, pts) in enumerate(top_admins, 1):
+            points_val = pts if pts is not None else 0
+            text += f"{idx}. {uname} — **{points_val}** бал.\n"
+    else:
+        text += "Рейтинг пуст за выбранный период.\n"
+    return text
+
 # --- Команда: Список администраторов (/админы /admins) ---
 @dp.message(F.text.in_({"/админы", "/admins"}))
 async def show_admins_list(message: types.Message):
     if message.chat.type == "private":
-        await message.answer("Эту команду можно использовать только в общем чате! / This command can only be used in a group chat!")
+        await message.answer("Эту команду можно использовать только в общем чате!")
         return
 
     chat_id = message.chat.id
@@ -171,73 +245,9 @@ async def show_admins_list(message: types.Message):
         
         await message.answer("\n".join(text_lines), parse_mode="Markdown")
     except Exception:
-        await message.answer("Не удалось получить список администраторов. Убедитесь, что бот имеет права в чате.")
+        await message.answer("Не удалось получить список администраторов.")
 
-# --- Команда: Наказание (+3 балла) (/punish /наказание) ---
-@dp.message(F.text.in_({"/punish", "/наказание"}))
-async def punish_command(message: types.Message):
-    if message.chat.type == "private":
-        await message.answer("Эта команда работает только в группах!")
-        return
-
-    user_id = message.from_user.id
-    username = message.from_user.full_name
-    now_str = datetime.now().isoformat()
-
-    try:
-        member = await message.bot.get_chat_member(chat_id=message.chat.id, user_id=user_id)
-        if member.status not in ["administrator", "creator"]:
-            await message.answer("❌ У вас нет прав администратора.")
-            return
-    except Exception:
-        return
-
-    db_cursor.execute("""
-        INSERT INTO admin_points (user_id, username, points) VALUES (?, ?, 3)
-        ON CONFLICT(user_id) DO UPDATE SET points = points + 3
-    """, (user_id, username))
-
-    db_cursor.execute(
-        "INSERT INTO punishment_log (user_id, username, timestamp) VALUES (?, ?, ?)",
-        (user_id, username, now_str)
-    )
-    db_connection.commit()
-
-    await message.answer(f"⚖️ Администратор {username} выдал наказание и получает **+3 балла**!", parse_mode="Markdown")
-
-# --- Команда: Отмена наказания (-3 балла) (/unmute /отменить) ---
-@dp.message(F.text.in_({"/unmute", "/отменить"}))
-async def cancel_punishment(message: types.Message):
-    if message.chat.type == "private":
-        await message.answer("Эта команда работает только в группах!")
-        return
-
-    user_id = message.from_user.id
-    username = message.from_user.full_name
-
-    try:
-        member = await message.bot.get_chat_member(chat_id=message.chat.id, user_id=user_id)
-        if member.status not in ["administrator", "creator"]:
-            await message.answer("❌ У вас нет прав администратора.")
-            return
-    except Exception:
-        return
-
-    db_cursor.execute("SELECT points FROM admin_points WHERE user_id = ?", (user_id,))
-    row = db_cursor.fetchone()
-    current_points = row[0] if row else 0
-
-    new_points = max(0, current_points - 3)
-
-    db_cursor.execute("""
-        INSERT INTO admin_points (user_id, username, points) VALUES (?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET points = ?
-    """, (user_id, username, new_points, new_points))
-    db_connection.commit()
-
-    await message.answer(f"↩️ Администратор {username} отменил наказание. Списано **3 балла** (текущий баланс: {new_points}).", parse_mode="Markdown")
-
-# --- Команда: Статистика и рейтинг (/stats /статистика) ---
+# --- Команда: Обычная статистика сообщества (/stats /статистика) ---
 @dp.message(F.text.in_({"/stats", "/статистика"}))
 async def show_statistics(message: types.Message):
     if message.chat.type == "private":
@@ -259,9 +269,6 @@ async def show_statistics(message: types.Message):
     db_cursor.execute("SELECT COUNT(*) FROM message_log")
     total_messages = db_cursor.fetchone()[0]
 
-    db_cursor.execute("SELECT username, points FROM admin_points ORDER BY points DESC LIMIT 5")
-    top_admins = db_cursor.fetchall()
-
     text = f"📊 **Статистика сообщества**\n\n"
     text += f"💬 Всего сообщений в базе: **{total_messages}**\n\n"
 
@@ -272,16 +279,51 @@ async def show_statistics(message: types.Message):
     else:
         text += "Пока нет данных за неделю.\n"
 
-    text += "\n🏆 **Рейтинг администраторов (баллы):**\n"
-    if top_admins:
-        for idx, (uname, pts) in enumerate(top_admins, 1):
-            text += f"{idx}. {uname} — **{pts}** бал.\n"
-    else:
-        text += "Рейтинг пуст.\n"
-
     await message.answer(text, parse_mode="Markdown")
 
-# --- Сбор сообщений для активности и авто-баллов ---
+# --- Команда: Топ баллов администраторов с кнопками (/top /топ) ---
+@dp.message(F.text.in_({"/top", "/топ"}))
+async def show_admin_top(message: types.Message):
+    if message.chat.type == "private":
+        await message.answer("Рейтинг администраторов можно посмотреть только в общем чате.")
+        return
+
+    leaderboard_text = get_leaderboard_text("За всё время")
+    full_text = f"📊 **Баллы и рейтинг администраторов**\n\n" + leaderboard_text
+
+    await message.answer(full_text, reply_markup=get_top_keyboard(), parse_mode="Markdown")
+
+# --- Обработка нажатий на кнопки топа админов ---
+@dp.callback_query(F.data.startswith("top_"))
+async def process_top_callback(callback: types.CallbackQuery):
+    data = callback.data
+    now = datetime.now()
+
+    if data == "top_all":
+        cutoff = None
+        period_name = "За всё время"
+    elif data == "top_month":
+        cutoff = (now - timedelta(days=30)).isoformat()
+        period_name = "За 1 месяц"
+    elif data == "top_week":
+        cutoff = (now - timedelta(days=7)).isoformat()
+        period_name = "За неделю"
+    elif data == "top_3days":
+        cutoff = (now - timedelta(days=3)).isoformat()
+        period_name = "За 3 дня"
+    else:
+        return
+
+    leaderboard_text = get_leaderboard_text(period_name, cutoff)
+    full_text = f"📊 **Баллы и рейтинг администраторов**\n\n" + leaderboard_text
+
+    try:
+        await callback.message.edit_text(full_text, reply_markup=get_top_keyboard(), parse_mode="Markdown")
+    except Exception:
+        pass
+    await callback.answer()
+
+# --- Универсальный обработчик (автоначисление баллов за GroupHelpBot, сообщения и активность) ---
 @dp.message()
 async def track_all_activity(message: types.Message):
     if message.chat.type == "private":
@@ -289,9 +331,85 @@ async def track_all_activity(message: types.Message):
     if not message.from_user:
         return
 
+    now_str = datetime.now().isoformat()
+
+    # 1. Отслеживание команд наказаний от админов (/mute, /ban, /warn)
+    if message.text and message.text.lower().startswith(("/mute", "/ban", "/warn", "/мутить", "/бан", "/варн")):
+        if message.reply_to_message:
+            user_id = message.from_user.id
+            username = message.from_user.full_name
+            target_user = message.reply_to_message.from_user
+            try:
+                member = await message.bot.get_chat_member(chat_id=message.chat.id, user_id=user_id)
+                if member.status in ["administrator", "creator"]:
+                    db_cursor.execute(
+                        "INSERT INTO admin_points_log (user_id, username, points_change, timestamp) VALUES (?, ?, 3, ?)",
+                        (user_id, username, now_str)
+                    )
+                    db_cursor.execute(
+                        "INSERT INTO active_punishments (admin_id, admin_username, target_id, active, timestamp) VALUES (?, ?, ?, 1, ?)",
+                        (user_id, username, target_user.id, now_str)
+                    )
+                    db_connection.commit()
+            except Exception:
+                pass
+        return
+
+    # 2. Отслеживание отмены наказаний админами (/unmute, /unban, /размут)
+    if message.text and message.text.lower().startswith(("/unmute", "/unban", "/размут", "/разбан")):
+        user_id = message.from_user.id
+        username = message.from_user.full_name
+        try:
+            member = await message.bot.get_chat_member(chat_id=message.chat.id, user_id=user_id)
+            if member.status in ["administrator", "creator"]:
+                target_user_id = message.reply_to_message.from_user.id if message.reply_to_message else None
+                if target_user_id:
+                    db_cursor.execute("SELECT id, admin_id FROM active_punishments WHERE target_id = ? AND active = 1 ORDER BY id DESC LIMIT 1", (target_user_id,))
+                else:
+                    db_cursor.execute("SELECT id, admin_id FROM active_punishments WHERE admin_id = ? AND active = 1 ORDER BY id DESC LIMIT 1", (user_id,))
+                
+                punish_record = db_cursor.fetchone()
+                if punish_record:
+                    punish_id, responsible_admin_id = punish_record
+                    db_cursor.execute("UPDATE active_punishments SET active = 0 WHERE id = ?", (punish_id,))
+                    
+                    db_cursor.execute("SELECT username FROM admin_points_log WHERE user_id = ? LIMIT 1", (responsible_admin_id,))
+                    row = db_cursor.fetchone()
+                    admin_uname = row[0] if row else "Админ"
+
+                    db_cursor.execute(
+                        "INSERT INTO admin_points_log (user_id, username, points_change, timestamp) VALUES (?, ?, -3, ?)",
+                        (responsible_admin_id, admin_uname, now_str)
+                    )
+                    db_connection.commit()
+        except Exception:
+            pass
+        return
+
+    # 3. Автоматическое снятие очков через сообщения от @GroupHelpBot
+    if message.from_user.username and message.from_user.username.lower() == "grouphelpbot":
+        text = (message.text or message.caption or "").lower()
+        if any(kw in text for kw in ["unmute", "unban", "размут", "разбан", "снято", "восстановлен"]):
+            db_cursor.execute("SELECT id, admin_id FROM active_punishments WHERE active = 1 ORDER BY id ASC LIMIT 1")
+            punish_record = db_cursor.fetchone()
+            if punish_record:
+                punish_id, responsible_admin_id = punish_record
+                db_cursor.execute("UPDATE active_punishments SET active = 0 WHERE id = ?", (punish_id,))
+                
+                db_cursor.execute("SELECT username FROM admin_points_log WHERE user_id = ? LIMIT 1", (responsible_admin_id,))
+                row = db_cursor.fetchone()
+                admin_uname = row[0] if row else "Админ"
+
+                db_cursor.execute(
+                    "INSERT INTO admin_points_log (user_id, username, points_change, timestamp) VALUES (?, ?, -3, ?)",
+                    (responsible_admin_id, admin_uname, now_str)
+                )
+                db_connection.commit()
+        return
+
+    # 4. Логирование обычных сообщений для общей статистики
     user_id = message.from_user.id
     username = message.from_user.full_name
-    now_str = datetime.now().isoformat()
 
     db_cursor.execute(
         "INSERT INTO message_log (user_id, username, timestamp) VALUES (?, ?, ?)",
@@ -299,6 +417,7 @@ async def track_all_activity(message: types.Message):
     )
     db_connection.commit()
 
+    # 5. Начисление +5 очков за каждые 500 сообщений для администраторов
     try:
         member = await message.bot.get_chat_member(chat_id=message.chat.id, user_id=user_id)
         if member.status in ["administrator", "creator"]:
@@ -306,10 +425,10 @@ async def track_all_activity(message: types.Message):
             msg_count = db_cursor.fetchone()[0]
 
             if msg_count > 0 and msg_count % 500 == 0:
-                db_cursor.execute("""
-                    INSERT INTO admin_points (user_id, username, points) VALUES (?, ?, 5)
-                    ON CONFLICT(user_id) DO UPDATE SET points = points + 5
-                """, (user_id, username))
+                db_cursor.execute(
+                    "INSERT INTO admin_points_log (user_id, username, points_change, timestamp) VALUES (?, ?, 5, ?)",
+                    (user_id, username, now_str)
+                )
                 db_connection.commit()
                 await message.answer(f"🎉 Администратор {username} преодолел отметку в {msg_count} сообщений и получает **+5 очков**!", parse_mode="Markdown")
     except Exception:
