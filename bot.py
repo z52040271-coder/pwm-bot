@@ -193,10 +193,8 @@ async def process_orgs(callback: types.CallbackQuery):
         pass
     await callback.answer()
 
-# --- Создание таблиц БД ---
-db_cursor.execute("CREATE TABLE IF NOT EXISTS admin_points_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, points_change INTEGER, timestamp TEXT)")
-db_cursor.execute("CREATE TABLE IF NOT EXISTS message_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, timestamp TEXT)")
-db_cursor.E IF NOT EXISTS active_punishments (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER, admin_username TEXT, target_id INTEGER, active INTEGER DEFAULT 1, timestamp TEXT)")
+db_cursor.execute("CREATE TABLE IF NOT EXISTS admin_points_log (user_id INTEGER, username TEXT, points_change INTEGER, timestamp TEXT)")
+db_cursor.execute("CREATE TABLE IF NOT EXISTS message_log (user_id INTEGER, username TEXT, timestamp TEXT)")
 db_connection.commit()
 
 # --- Клавиатура для топа администраторов ---
