@@ -32,14 +32,17 @@ db_cursor.execute("CREATE TABLE IF NOT EXISTS message_log (id INTEGER PRIMARY KE
 db_cursor.execute("CREATE TABLE IF NOT EXISTS punishment_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, timestamp TEXT)")
 db_connection.commit()
 
+from aiogram.filters import Command
+from aiogram import F, types
+
 # --- КЛАВИАТУРА ДЛЯ УСТАВА ---
 def get_ustav_keyboard():
-    keyboard = InlineKeyboardMarkup(
+    keyboard = types.InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="1) 📜 Уточнения по правилам", callback_data="ustav_rules_more")],
-            [InlineKeyboardButton(text="2) ⚡ Спец возможности", callback_data="ustav_specials")],
-            [InlineKeyboardButton(text="3) 🗳️ Выборы", callback_data="ustav_elections")],
-            [InlineKeyboardButton(text="4) 🏢 Организации ПВМ и их права", callback_data="ustav_orgs")],
+            [types.InlineKeyboardButton(text="1) 📜 Уточнения по правилам", callback_data="ustav_rules_more")],
+            [types.InlineKeyboardButton(text="2) ⚡ Спец возможности", callback_data="ustav_specials")],
+            [types.InlineKeyboardButton(text="3) 🗳️ Выборы", callback_data="ustav_elections")],
+            [types.InlineKeyboardButton(text="4) 🏢 Организации ПВМ и их права", callback_data="ustav_orgs")],
         ]
     )
     return keyboard
@@ -52,7 +55,7 @@ async def cmd_start(message: types.Message):
 
 @dp.message(Command("rules", "правила"))
 async def cmd_rules(message: types.Message):
-    text = """**ПРАВИЛА ЧАТУ:**
+    text = """ПРАВИЛА ЧАТУ:
 
 1) Сексуальный контент - от мута до бана
 2) Спам и флуд - мут від 1 години до дня
@@ -70,21 +73,21 @@ async def cmd_rules(message: types.Message):
 14) Если в стикерпаке материал за который дают бан, наказание: бан
 15) Все уточнения по правилям в уставе."""
 
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text)
 
 @dp.message(Command("ustav", "устав"))
 async def cmd_ustav(message: types.Message):
-    text = """📜 **Устав PWM**
+    text = """📜 Устав PWM
 
 Выберите интересующий вас раздел:"""
-    await message.answer(text, reply_markup=get_ustav_keyboard(), parse_mode="Markdown")
+    await message.answer(text, reply_markup=get_ustav_keyboard())
 
 
 # --- ОБРАБОТКА НАЖАТИЙ НА КНОПКИ УСТАВА ---
 
 @dp.callback_query(F.data == "ustav_rules_more")
 async def process_rules_more(callback: types.CallbackQuery):
-    text = """📜 **Уточнения по правилам:**
+    text = """📜 Уточнения по правилам:
 
 1) Любые изображения, видео, гиф откровенного сексуального характера. За обычные изображения сисек, писек подобное - 1 день мута чаще всего. Но например за пдф, зоо - бан.
 
@@ -121,7 +124,7 @@ async def process_rules_more(callback: types.CallbackQuery):
 15) Ботов по типу хамстера в бан."""
 
     try:
-        await callback.message.edit_text(text, parse_mode="Markdown")
+        await callback.message.edit_text(text)
     except Exception:
         pass
     await callback.answer()
@@ -129,7 +132,7 @@ async def process_rules_more(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "ustav_specials")
 async def process_specials(callback: types.CallbackQuery):
-    text = """⚡️ **Спец возможности:**
+    text = """⚡️ Спец возможности:
 
 1) Официальные голосование - может устроить каждый участник, условия: не шуточное оформления вопроса/темы, оно должно касаться чата, должно получить одобрения любого из админов/депутатов.
 
@@ -142,7 +145,7 @@ async def process_specials(callback: types.CallbackQuery):
 5) Любой участник без запрета парламента, или конотопа имеет права стать админом или депутатом."""
 
     try:
-        await callback.message.edit_text(text, parse_mode="Markdown")
+        await callback.message.edit_text(text)
     except Exception:
         pass
     await callback.answer()
@@ -150,28 +153,28 @@ async def process_specials(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "ustav_elections")
 async def process_elections(callback: types.CallbackQuery):
-    text = """🗳 **Выборы:**
+    text = """🗳 Выборы:
 
-**1) Условия на пост депутата:**
+1) Условия на пост депутата:
 А) У человека должно быть от 5000 сообщений в чате (возможны исключения).
 Б) Внесён в список кандидатов замом или главой парламента.
 В) Предвыборная речь где написано: количество соо, то почему парламент должен принять участника, идеи.
 Г) Должен пройти голосование в парламенте, где больше 50% голосов должно быть за принятия.
 
-**2) На пост админа:**
+2) На пост админа:
 А) От 6000 сообщений в чате.
 Б) Быть в чате не меньше 2 месяца.
 В) Победить в официальном голосовании в чате, и в парламенте.
 Г) Разрешение конотопа (владельца).
 
-**Общие правила выборов:**
+Общие правила выборов:
 1) Запрещена фальсификация, когда опрос перекидывают в другой чат с просьбой проголосовать за тот или иной вариант.
 2) Подкупать голоса нельзя.
 3) Нарушения уникальных правил голосования.
-**Наказание за все нарушения:** снятие с выборов и мут по 12 правилу, или же только мут."""
+Наказание за все нарушения: снятие с выборов и мут по 12 правилу, или же только мут."""
 
     try:
-        await callback.message.edit_text(text, parse_mode="Markdown")
+        await callback.message.edit_text(text)
     except Exception:
         pass
     await callback.answer()
@@ -179,19 +182,24 @@ async def process_elections(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "ustav_orgs")
 async def process_orgs(callback: types.CallbackQuery):
-    text = """🏢 **Организации и их права:**
+    text = """🏢 Организации и их права:
 
-**Парламент**
+Парламент
 На данный момент главная организация, которая имеет право менять чат.
 
-**Чат идеи от участников**
+Чат идеи от участников
 С разрешения парламента также имеет право менять чат."""
 
     try:
-        await callback.message.edit_text(text, parse_mode="Markdown")
+        await callback.message.edit_text(text)
     except Exception:
         pass
     await callback.answer()
+
+# --- Создание таблиц БД ---
+db_cursor.execute("CREATE TABLE IF NOT EXISTS admin_points_log (user_id INTEGER, username TEXT, points_change INTEGER, timestamp TEXT)")
+db_cursor.execute("CREATE TABLE IF NOT EXISTS message_log (user_id INTEGER, username TEXT, timestamp TEXT)")
+db_connection.commit()
 
 
 # --- Создание таблиц БД ---
